@@ -7,7 +7,6 @@ import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 import org.springframework.http.ResponseEntity;
 import org.springframework.mock.web.MockMultipartFile;
-import pe.edu.upeu.sysasistencia.dtos.ImportFilterDTO;
 import pe.edu.upeu.sysasistencia.dtos.ImportResultDTO;
 import pe.edu.upeu.sysasistencia.dtos.MatriculaDTO;
 import pe.edu.upeu.sysasistencia.excepciones.CustomResponse;
@@ -17,6 +16,7 @@ import pe.edu.upeu.sysasistencia.modelo.TipoPersona;
 import pe.edu.upeu.sysasistencia.servicio.IMatriculaService;
 import java.time.LocalDateTime;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
@@ -57,8 +57,12 @@ class MatriculaControllerTest {
 
         ResponseEntity<List<MatriculaDTO>> response = matriculaController.findAll();
 
-        assertEquals(200, response.getStatusCodeValue());
+        assertEquals(200, response.getStatusCode().value());
+        assertNotNull(response.getBody());
         assertEquals(1, response.getBody().size());
+        assertEquals(1L, response.getBody().get(0).getIdMatricula());
+        assertEquals("ACTIVO", response.getBody().get(0).getEstado());
+
         verify(matriculaService, times(1)).findAll();
     }
 
@@ -69,8 +73,12 @@ class MatriculaControllerTest {
 
         ResponseEntity<MatriculaDTO> response = matriculaController.findById(1L);
 
-        assertEquals(200, response.getStatusCodeValue());
+        assertEquals(200, response.getStatusCode().value());
+        assertNotNull(response.getBody());
         assertEquals(1L, response.getBody().getIdMatricula());
+        assertEquals("ACTIVO", response.getBody().getEstado());
+
+        verify(matriculaService, times(1)).findById(1L);
     }
 
     @Test
@@ -80,8 +88,12 @@ class MatriculaControllerTest {
 
         ResponseEntity<List<MatriculaDTO>> response = matriculaController.findByCodigoEstudiante("A001");
 
-        assertEquals(200, response.getStatusCodeValue());
+        assertEquals(200, response.getStatusCode().value());
+        assertNotNull(response.getBody());
         assertEquals(1, response.getBody().size());
+        assertEquals(1L, response.getBody().get(0).getIdMatricula());
+
+        verify(matriculaService, times(1)).findByCodigoEstudiante("A001");
     }
 
     @Test
@@ -90,11 +102,14 @@ class MatriculaControllerTest {
                 .thenReturn(List.of(matricula));
         when(matriculaMapper.toDTOs(anyList())).thenReturn(List.of(matriculaDTO));
 
-        ResponseEntity<List<MatriculaDTO>> response =
-                matriculaController.findByFiltros(null, null, null, TipoPersona.ESTUDIANTE);
+        ResponseEntity<List<MatriculaDTO>> response = matriculaController.findByFiltros(null, null, null, TipoPersona.ESTUDIANTE);
 
-        assertEquals(200, response.getStatusCodeValue());
+        assertEquals(200, response.getStatusCode().value());
+        assertNotNull(response.getBody());
         assertEquals(1, response.getBody().size());
+        assertEquals(1L, response.getBody().get(0).getIdMatricula());
+
+        verify(matriculaService, times(1)).findByFiltros(null, null, null, TipoPersona.ESTUDIANTE);
     }
 
     @Test
@@ -105,8 +120,12 @@ class MatriculaControllerTest {
 
         ResponseEntity<MatriculaDTO> response = matriculaController.save(matriculaDTO);
 
-        assertEquals(201, response.getStatusCodeValue());
+        assertEquals(201, response.getStatusCode().value());
+        assertNotNull(response.getBody());
+        assertEquals(1L, response.getBody().getIdMatricula());
         assertEquals("ACTIVO", response.getBody().getEstado());
+
+        verify(matriculaService, times(1)).save(any(Matricula.class));
     }
 
     @Test
@@ -117,14 +136,16 @@ class MatriculaControllerTest {
 
         ResponseEntity<MatriculaDTO> response = matriculaController.update(1L, matriculaDTO);
 
-        assertEquals(200, response.getStatusCodeValue());
+        assertEquals(200, response.getStatusCode().value());
+        assertNotNull(response.getBody());
         assertEquals(1L, response.getBody().getIdMatricula());
+        assertEquals("ACTIVO", response.getBody().getEstado());
+
+        verify(matriculaService, times(1)).update(eq(1L), any(Matricula.class));
     }
 
     @Test
     void testDelete() {
-
-
         CustomResponse mockResponse = new CustomResponse(
                 200,
                 LocalDateTime.now(),
@@ -132,41 +153,71 @@ class MatriculaControllerTest {
                 "/matriculas/1"
         );
 
-
         when(matriculaService.delete(1L)).thenReturn(mockResponse);
 
         ResponseEntity<CustomResponse> response = matriculaController.delete(1L);
 
-        assertEquals(200, response.getStatusCodeValue());
+        assertEquals(200, response.getStatusCode().value());
+        assertNotNull(response.getBody());
+        assertEquals(200, response.getBody().getStatusCode());
         assertEquals("Eliminado correctamente", response.getBody().getMessage());
+
+        verify(matriculaService, times(1)).delete(1L);
     }
 
     @Test
     void testImportarExcel_Success() throws Exception {
-        MockMultipartFile file = new MockMultipartFile("file", "test.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", new byte[]{1, 2, 3});
-
+        // Crear resultado esperado con listas inicializadas
         ImportResultDTO resultDTO = new ImportResultDTO();
         resultDTO.setTotalRegistros(5);
         resultDTO.setExitosos(5);
         resultDTO.setFallidos(0);
-        resultDTO.setWarnings(Collections.singletonList("Importación correcta"));
+        resultDTO.setErrores(new ArrayList<>());
+        resultDTO.setWarnings(new ArrayList<>());
+        resultDTO.getWarnings().add("Importación correcta");
 
-        when(matriculaService.importarDesdeExcel(any(), any())).thenReturn(resultDTO);
+        // Crear archivo de prueba
+        MockMultipartFile file = new MockMultipartFile(
+                "file", 
+                "test.xlsx", 
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", 
+                "test content".getBytes()
+        );
 
-        ResponseEntity<ImportResultDTO> response = matriculaController.importarExcel(file, null, null, null, TipoPersona.ESTUDIANTE);
+        // Mock del servicio - usar doAnswer para control total
+        doAnswer(invocation -> resultDTO).when(matriculaService).importarDesdeExcel(any(), any());
 
-        assertEquals(200, response.getStatusCodeValue());
+        // Ejecutar el test
+        ResponseEntity<ImportResultDTO> response = matriculaController.importarExcel(
+                file, null, null, null, TipoPersona.ESTUDIANTE
+        );
+
+        // Verificar resultados
+        assertEquals(200, response.getStatusCode().value());
+        assertNotNull(response.getBody());
         assertEquals(5, response.getBody().getTotalRegistros());
+        assertEquals(5, response.getBody().getExitosos());
+        assertEquals(0, response.getBody().getFallidos());
+        
+        // Verificar que se llamó al servicio
         verify(matriculaService, times(1)).importarDesdeExcel(any(), any());
     }
 
     @Test
-    void testImportarExcel_FileEmpty() {
-        MockMultipartFile emptyFile = new MockMultipartFile("file", "empty.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", new byte[0]);
+    void testImportarExcel_FileEmpty() throws Exception {
+        MockMultipartFile emptyFile = new MockMultipartFile(
+                "file", 
+                "empty.xlsx", 
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", 
+                new byte[0]
+        );
 
-        ResponseEntity<ImportResultDTO> response = matriculaController.importarExcel(emptyFile, null, null, null, TipoPersona.ESTUDIANTE);
+        ResponseEntity<ImportResultDTO> response = matriculaController.importarExcel(
+                emptyFile, null, null, null, TipoPersona.ESTUDIANTE
+        );
 
-        assertEquals(500, response.getStatusCodeValue());
+        assertEquals(500, response.getStatusCode().value());
+        assertNotNull(response.getBody());
         assertTrue(response.getBody().getErrores().get(0).contains("Error general"));
     }
 }

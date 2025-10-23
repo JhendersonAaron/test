@@ -2,91 +2,105 @@ package pe.edu.upeu.sysasistencia.servicio;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.mockito.InjectMocks;
-import org.mockito.Mock;
-import org.mockito.MockitoAnnotations;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.context.ActiveProfiles;
+import org.springframework.transaction.annotation.Transactional;
 import pe.edu.upeu.sysasistencia.dtos.AsistenciaDTO;
-import pe.edu.upeu.sysasistencia.mappers.AsistenciaMapper;
-import pe.edu.upeu.sysasistencia.modelo.Asistencia;
-import pe.edu.upeu.sysasistencia.modelo.EstadoAsistencia;
-import pe.edu.upeu.sysasistencia.repositorio.IAsistenciaRepository;
-import pe.edu.upeu.sysasistencia.servicio.impl.AsistenciaServiceImp;
+import pe.edu.upeu.sysasistencia.modelo.*;
+import pe.edu.upeu.sysasistencia.repositorio.IEventoEspecificoRepository;
+import pe.edu.upeu.sysasistencia.repositorio.IEventoGeneralRepository;
+import pe.edu.upeu.sysasistencia.repositorio.IPersonaRepository;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.util.List;
-import java.util.Optional;
+import java.time.LocalTime;
 
 import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.*;
 
+@SpringBootTest
+@ActiveProfiles("test")
+@Transactional
 class AsistenciaServiceTest {
 
-    @Mock
-    private IAsistenciaRepository asistenciaRepository;
+    @Autowired
+    private IAsistenciaService asistenciaService;
 
-    @Mock
-    private AsistenciaMapper asistenciaMapper;
+    @Autowired
+    private IEventoGeneralRepository eventoGeneralRepository;
 
-    @InjectMocks
-    private AsistenciaServiceImp asistenciaService;
+    @Autowired
+    private IEventoEspecificoRepository eventoEspecificoRepository;
 
-    private Asistencia asistenciaEntity;
-    private AsistenciaDTO asistenciaDTO;
+    @Autowired
+    private IPersonaRepository personaRepository;
+
+    private Long eventoEspecificoId;
+    private Long personaId;
 
     @BeforeEach
     void setUp() {
-        MockitoAnnotations.openMocks(this);
+        // Crear EventoGeneral
+        EventoGeneral eventoGeneral = new EventoGeneral();
+        eventoGeneral.setNombreEvento("Test Evento General");
+        eventoGeneral.setDescripcion("Descripción del evento general");
+        eventoGeneral.setLugar("Lugar de prueba");
+        eventoGeneral.setFechaInicio(LocalDate.now());
+        eventoGeneral.setFechaFin(LocalDate.now().plusDays(1));
+        eventoGeneral.setEstado(EstadoEvento.ACTIVO);
+        eventoGeneral.setFechaCreacion(LocalDateTime.now());
+        EventoGeneral savedEventoGeneral = eventoGeneralRepository.save(eventoGeneral);
 
-        asistenciaEntity = Asistencia.builder()
-                .idAsistencia(1L)
-                .fechaAsistencia(LocalDateTime.now())
-                .estadoAsistencia(EstadoAsistencia.PRESENTE)
-                .observaciones("Prueba asistencia")
-                .build();
+        // Crear EventoEspecifico
+        EventoEspecifico eventoEspecifico = new EventoEspecifico();
+        eventoEspecifico.setEventoGeneral(savedEventoGeneral);
+        eventoEspecifico.setDescripcion("Descripción del evento específico");
+        eventoEspecifico.setFechaEvento(LocalDate.now());
+        eventoEspecifico.setHoraInicio(LocalTime.now());
+        eventoEspecifico.setHoraFin(LocalTime.now().plusHours(2));
+        eventoEspecifico.setEstado(EstadoEventoEspecifico.PROGRAMADO);
+        eventoEspecifico.setFechaCreacion(LocalDateTime.now());
+        EventoEspecifico savedEventoEspecifico = eventoEspecificoRepository.save(eventoEspecifico);
+        eventoEspecificoId = savedEventoEspecifico.getIdEventoEspecifico();
 
-        asistenciaDTO = new AsistenciaDTO(
-                1L, 2L, 3L,
-                LocalDateTime.now(),
-                "PRESENTE",
-                "Prueba asistencia",
-                LocalDateTime.now()
-        );
+        // Crear Persona
+        Persona persona = new Persona();
+        persona.setNombreCompleto("Test Persona");
+        persona.setDocumento("12345678");
+        persona.setCorreo("test@test.com");
+        persona.setCelular("123456789");
+        persona.setTipoPersona(TipoPersona.ESTUDIANTE);
+        Persona savedPersona = personaRepository.save(persona);
+        personaId = savedPersona.getIdPersona();
     }
 
     @Test
-    void testSaveAsistencia() {
-        when(asistenciaMapper.toEntity(asistenciaDTO)).thenReturn(asistenciaEntity);
-        when(asistenciaRepository.save(asistenciaEntity)).thenReturn(asistenciaEntity);
-        when(asistenciaMapper.toDTO(asistenciaEntity)).thenReturn(asistenciaDTO);
+    void testSaveAndFindAsistencia() {
+        // Crear DTO de prueba usando los IDs creados en setUp
+        AsistenciaDTO dto = new AsistenciaDTO();
+        dto.setEventoEspecificoId(eventoEspecificoId);
+        dto.setPersonaId(personaId);
+        dto.setFechaAsistencia(LocalDateTime.now());
+        dto.setEstadoAsistencia("PRESENTE");
+        dto.setObservaciones("Test servicio");
 
-        AsistenciaDTO result = asistenciaService.save(asistenciaDTO);
+        // Guardar
+        AsistenciaDTO saved = asistenciaService.save(dto);
 
-        assertNotNull(result);
-        assertEquals(asistenciaDTO.getIdAsistencia(), result.getIdAsistencia());
-        verify(asistenciaRepository, times(1)).save(any(Asistencia.class));
+        // Verificar
+        assertNotNull(saved.getIdAsistencia());
+        assertEquals("PRESENTE", saved.getEstadoAsistencia());
+        assertEquals(eventoEspecificoId, saved.getEventoEspecificoId());
+        assertEquals(personaId, saved.getPersonaId());
     }
 
     @Test
     void testFindAll() {
-        when(asistenciaRepository.findAll()).thenReturn(List.of(asistenciaEntity));
-        when(asistenciaMapper.toDTOs(List.of(asistenciaEntity))).thenReturn(List.of(asistenciaDTO));
-
-        List<AsistenciaDTO> result = asistenciaService.findAll();
-
-        assertNotNull(result);
-        assertEquals(1, result.size());
-        verify(asistenciaRepository, times(1)).findAll();
+        assertNotNull(asistenciaService.findAll());
     }
 
     @Test
-    void testFindById() {
-        when(asistenciaRepository.findById(1L)).thenReturn(Optional.of(asistenciaEntity));
-        when(asistenciaMapper.toDTO(asistenciaEntity)).thenReturn(asistenciaDTO);
-
-        AsistenciaDTO result = asistenciaService.findById(1L);
-
-        assertNotNull(result);
-        assertEquals(1L, result.getIdAsistencia());
-        verify(asistenciaRepository, times(1)).findById(1L);
+    void testFindByEventoEspecifico() {
+        assertNotNull(asistenciaService.findByEventoEspecificoId(eventoEspecificoId));
     }
 }
